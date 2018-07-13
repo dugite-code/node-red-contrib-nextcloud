@@ -67,6 +67,52 @@ module.exports = function(RED) {
     }
     RED.nodes.registerType('nextcloud-caldav', NextcloudCalDav)
 
+    function NextcloudCalDavIn(n) {
+        RED.nodes.createNode(this, n)
+        this.server = RED.nodes.getNode(n.server)
+        this.calendar = n.calendar
+        let node = this
+
+        node.on('input', function(msg) {
+            const xhr = new dav.transport.Basic (
+                new dav.Credentials({
+                    username: node.server.credentials.user,
+                    password: node.server.credentials.pass
+                })
+            )
+            // Server + Basepath
+            let calDavUri = node.server.address + '/remote.php/dav/calendars/'
+            // User
+            calDavUri += node.server.credentials.user + '/'
+            dav.createAccount({ server: calDavUri, xhr: xhr })
+                .then(function(account) {
+                    if (!account.calendars) {
+                        node.error('Nextcloud:CalDAV -> no calendars found.')
+                        return
+                    }
+                    // account instanceof dav.Account
+                    account.calendars.forEach(function(calendar) {
+                      let c = msg.calendar || node.calendar
+
+                      // ics string to upload
+                      let icscal = msg.ics
+
+                      // Generate unique filename
+                      let date = new Date()
+                      let filename = date + ".ics"
+
+                      // If calendar matches upload calendar Item
+                      if(icscal && c && c.length && c === calendar.displayName){
+                        dav.createCalendarObject(calendar, {data: icscal, filename: filename, xhr: xhr});
+                      }
+                    })
+                }, function(){
+                    node.error('Nextcloud:CalDAV -> upload calendar item went wrong.')
+                })
+        })
+    }
+    RED.nodes.registerType('nextcloud-caldav-in', NextcloudCalDavIn)
+
 
     function NextcloudCardDav(n) {
         RED.nodes.createNode(this, n)
